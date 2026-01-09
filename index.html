@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Product Authenticity Checker</title>
+  <style>
+    :root{
+      --brand:#2b7a78;
+      --bg:#f0f4f8;
+      --card-bg:#ffffff;
+      --max-w:420px;
+    }
+    html,body{height:100%;margin:0;}
+    body {
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .container {
+      background: var(--card-bg);
+      padding: 20px 22px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: var(--max-w);
+      box-sizing: border-box;
+    }
+
+    h2 {
+      text-align: center;
+      color: var(--brand);
+      margin: 0 0 14px 0;
+      font-size: 1.25rem;
+    }
+
+    label {
+      display:block;
+      font-size: 0.9rem;
+      color: #555;
+      margin-top: 10px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 0.9rem;
+      margin-top: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+
+    button {
+      width: 100%;
+      padding: 0.9rem;
+      background: var(--brand);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 14px;
+    }
+
+    #result {
+      margin-top: 12px;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    /* Responsive typography / spacing */
+    @media (max-width:420px){
+      .container{ padding:16px; }
+      h2{ font-size:1.1rem; }
+      input, button{ font-size:0.95rem; padding:0.85rem; }
+    }
+
+    @media (min-width:900px){
+      :root{ --max-w:520px; }
+      .container{ padding:28px; }
+      h2{ font-size:1.35rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" role="main" aria-labelledby="title">
+    <h2 id="title">Check Product Authenticity</h2>
+
+    <!--<label for="maskedCode">Scanned Code:</label>
+    <input type="text" id="maskedCode" readonly aria-readonly="true" />-->
+
+    <label for="manualCode">Enter the code printed below the Hologram/QR code:</label>
+    <input type="text" id="manualCode" placeholder="Enter product code" inputmode="text" />
+
+    <button id="validateBtn" onclick="validateCode()">Validate</button>
+    <div id="result" role="status" aria-live="polite"></div>
+  </div>
+
+  <script>
+    const sheetURL = "https://api.sheetbest.com/sheets/500c7531-4cf8-4bfe-8ff3-763cd95b4ef5";
+    let enc = "";
+    window.addEventListener('load', () => {
+      const params = new URLSearchParams(window.location.search);
+      enc = params.get("enc");
+      // improve keyboard UX on mobile: focus manual input if no enc
+      if (!enc) document.getElementById("manualCode").focus();
+    });
+
+    async function validateCode(){
+      const userInput = document.getElementById("manualCode").value.trim();
+      const resultDiv = document.getElementById("result");
+      resultDiv.textContent = "";
+
+      if (!enc) {
+        resultDiv.innerHTML = `<span style="color:red">⚠️ No scanned code found. Please scan QR.</span>`;
+        return;
+      }
+
+      //if (userInput !== enc) {
+      if (userInput.toLowerCase() !== enc.toLowerCase()) {
+        resultDiv.innerHTML = `<span style="color:red">❌ Code mismatch. Please check and try again.</span>`;
+        return;
+      }
+
+      resultDiv.textContent = "Checking...";
+
+      try {
+        const response = await fetch(sheetURL);
+        const data = await response.json();
+
+        //const match = data.find(row => row.Code === userInput);
+        const match = data.find(row => row.Code?.toLowerCase() === userInput.toLowerCase());
+
+        if (!match) {
+          resultDiv.innerHTML = `<span style="color:red">❌ Invalid code</span>`;
+          return;
+        }
+
+        if (match.Scan && String(match.Scan).toLowerCase() === "scanned") {
+          resultDiv.innerHTML = `<span style="color:red">⚠️ This product has already been scanned on ${match.ScanDateTime || 'N/A'}</span>`;
+          return;
+        }
+
+        // mark scanned with datetime
+        await fetch(`${sheetURL}/Code/${encodeURIComponent(userInput)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            Scan: "Scanned",
+            ScanDateTime: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+          })
+        });
+
+        // redirect to details page with encoded URI component
+        window.location.href = `details.html?code=${encodeURIComponent(userInput)}`;
+      } catch (err) {
+        console.error(err);
+        resultDiv.innerHTML = `<span style="color:red">⚠️ Error fetching data</span>`;
+      }
+    }
+  </script>
+</body>
+</html>
